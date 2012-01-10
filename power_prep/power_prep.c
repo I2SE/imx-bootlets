@@ -86,32 +86,69 @@ void PowerPrep_PrintBatteryVoltage(unsigned int value);
 #define ERROR_INSUFFICIENT_BATT_AFTER_PSWITCH   ((int)POWER_PREP_GROUP + 4)
 #define ERROR_UNEXPECTED_LOOP_EXIT              ((int)POWER_PREP_GROUP + 5)
 
+/* Enable the following if you only have a VDD5V source only and no DCDC_BATT
+ * source.  This includes configurations with and without a supercap on the
+ * BATTERY pin as  * shown in the i.MX28 reference schematic (applies to
+ * i.MX233 as well).
+ *
+ * NOTE: If both a DCDC_BATT and VDD5V source are present, this is not meant to
+ * select which one to use.  This is only for hardware configurations this no
+ * DCDC_BATT power source.
+*/
+//#define NO_DCDC_BATT_SOURCE
+
+/* Enable the following if you only have a DCDC_BATT source only and no V
+ * This includes configurations with and without a supercap on the BATTERY pin as
+ * shown in the i.MX28 reference schematic (applies to i.MX233 as well).
+ *
+ * NOTE: If both a DCDC_BATT and VDD5V source are present, this is not meant to
+ * select which one to use.  This is only for hardware configurations this no
+ * VDD5V power source.
+*/
+//#define NO_VDD5V_SOURCE
+
+/* if you accidentally define both, don't allow a successful compile. */
+#if defined(NO_DCDC_BATT_SOURCE) && defined(NO_VDD5V_SOURCE)
+#error Invalid power source configuration.
+#endif
+
 
 /* We need to protect the DCDC from trying to source charge
  * from too low of a voltage.  This limit is given in
  * the characteristics and specifications section of the
- * reference manual.  Also, we want to stop sourcing
+ * reference manual for i.MX233 and in the datasheet
+ * for i.MX28x.  Also, we want to stop sourcing
  * charge from the battery before the battery's internal
  * protection circuitry may activate which would then cause
- * us to lose RTC time.  Generically using 3.0V as the
- * battery's maximum voltage it may activate it's
- * undervoltage protection.  At the time of this writing,
- * 3V is greater than the minimum DCDC operating voltage
- * so we will set the BRWNOUT_LVL bitfield to 3V value.
+ * us to lose RTC time.  By default, we will use 3.0V as the
+ * battery's maximum voltage that may cause it's undervoltage protection
+ * circuitry to activate.
+ */
+#ifdef mx28
+/*
+ * At the time of this writing, from version Rev. 1, 04/2011 of the i.MX28
+ * datasheet, 3V is less than the minimum DCDC operating voltage for i.MX28
+ * of 3.1V as listed in by the "Battery / DCDC Input Voltage" parameter so
+ * we will set the BRWNOUT_LVL bitfield the 3.1V value.
+ */
+#define BATTERY_BRWNOUT_BITFIELD_VALUE 18 /* 18 = 3.12V */
+#else
+/*
+ * At the time of this writing,
+ * 3V is greater than the minimum DCDC operating voltage for i.MX233
+ * as listed in by the "Battery / DCDC Input Voltage" parameter listed
+ * in the reference manual so we will set the BRWNOUT_LVL bitfield to 3V value.
  */
 #define BATTERY_BRWNOUT_BITFIELD_VALUE 15 /* 15 = 3.0V */
+#endif
 
-/* per the reference manul, the power supplies DCDC output capabilities
- * are given with 3.3V as the minimum battery input voltage. By default,
- * we'd rather not start the device unless we have know that we can
- * supply a known amount of power (given in the reference manual).
- * This value is used only for booting from battery, not from 5V.
- * Typically, you'll want to set this slightly above the lowest
- * input voltage you want to provide the DCDC during boot to account
- * for larger voltage drops battery output resistance when the load
- * is higher than when this voltage check is made.
+/* When valid VDD5V voltage is present, if the battery voltage is higher than
+ *  this level, we boot from the DCDC_BATT
+ * source instead of VDD5V.  Booting from DCDC_BATT can be quicker in some cases
+ * if it allows us to avoid running at lower clock speeds due to, for example,
+ * USB VBUS current limitations.
  *
- * Lastly, we want this voltage high enough above the battery
+ * We want this voltage to be high enough above the battery
  * brownout level so that we don't accidentally trigger a
  * battery brownout later on during a more critical time
  * (such as when writing to media which might cause some
@@ -125,6 +162,14 @@ void PowerPrep_PrintBatteryVoltage(unsigned int value);
 
 #define MAX_4P2_CAP_CHARGE_TIME 100000
 #define BOOTUP_CHARGE_4P2_CURRENT_LIMIT 780
+
+/* this is a bad name but this definition attempts to be the level
+ * in which anything below this is too far from the DCDC converters
+ * characterized input voltage.  For example, on i.MX28, 3.3V is the
+ * minimum input voltage that the DCDC was characterized for.  The
+ * characterization actually used was 3.2V but 3.3V is given as minimum
+ * in the spec as margin to account for equipment error and other variables.
+ */
 #define POWER_PREP_MINIMUM_VALID_BATTERY_BOOTUP_VOLTAGE 3200
 #define MAX_BATTERY_CAPACITOR_SIZE_UF 100
 
@@ -137,14 +182,6 @@ void PowerPrep_PrintBatteryVoltage(unsigned int value);
 #define BATTERY_HIGH           4300
 #define BATTERY_BAD            3500
 #define BATTERY_BOOT           3400
-
-
-/* enable the following if your device configuration consists uses a regulated
-* voltage source for the battery voltage input.  Source must be in the range
-* of the recommended operating voltage range from the characteristics and
-* specifications section of the mx23/mx28 reference manual
-*/
-/* #define NO_BATTERY_VOLTAGE_SOURCE */
 
 #if 0
 #define RUN_BATTERY_TEST
@@ -161,7 +198,15 @@ void PowerPrep_PrintBatteryVoltage(unsigned int value);
 bool bBatteryConnected = false;
 #endif
 
+/* Should the battery be used as the primary source even when valid VDD5V
+ * is present?  See MINIMUM_SAFE_BOOTING_BATTERY_VOLTAGE_MV comments for
+ * explanation.
+ */
 bool bBatteryReady = false;
+
+/* This flag is used to store the status of whether or not the DCDC_BATT source
+ * is an actual battery or a non-chargeable source.
+ */
 bool bBatteryGood = false;
 ////////////////////////////////////////////////////////////////////////////////
 // Code
@@ -281,7 +326,24 @@ int _start( void )
 	);
 	/* If Battery not ready,setup the auto power down if we lost 5V.*/
 	if (!bBatteryReady)
+	{
 		HW_POWER_5VCTRL_SET(BM_POWER_5VCTRL_PWDN_5VBRNOUT);
+
+#if defined(NO_DCDC_BATT_SOURCE) && defined(mx28)
+	/* On i.MX28, a new bit has been added to allow automatic hardware
+	 * shutdown if VDD4P2 browns out.  If we permanently only have a VDD5V
+	 * source, we want to enable this bit.  For devices with dead batteries,
+	 * we could also temporarily set this bit until the kernel battery
+	 * charger sufficiently charges the battery but we won't do this for
+	 * now as the latest release kernel versions aren't aware of  it
+	 * and thus don't handle the proper setting/clearing of this bit.
+	 */
+		HW_POWER_REFCTRL_SET(1<<7);
+#endif
+
+	}
+
+
 	return iRtn;
 }
 
@@ -317,11 +379,12 @@ int PowerPrep_ConfigurePowerSource( void )
 	/* initialize DCDC operating parameters */
 	hw_power_Init();
 
-#ifdef  NO_BATTERY_VOLTAGE_SOURCE
+#ifdef  NO_DCDC_BATT_SOURCE
 
-	/* device configured for "no battery" operation (5V only power source).  This boot
-	* option doesn't waste time looking for a good battery.  Battery powered
-	* operation and automatic voltage measurements are disabled.
+	/* device configured for no source to DCDC_BATT input (5V only power
+	 * source).  This boot option doesn't waste time looking for a good
+	 *  battery.  Battery powered operation and automatic voltage
+	 *  measurements are disabled.
 	*/
 
 	bBatteryReady = false;
@@ -330,7 +393,9 @@ int PowerPrep_ConfigurePowerSource( void )
 	printf("\r\nConfigured for 5v only power source.\
 		Battery powered operation disabled.\r\n");
 
-	/* disable automatic battery voltage measurements */
+	/* Disable automatic battery voltage measurements which seem unnecessary
+	 * for this configuration.
+	 */
 	BF_CLR(LRADC_CONVERSION, AUTOMATIC);
 	BF_WR(POWER_BATTMONITOR, BATT_VAL,0);
 
@@ -339,7 +404,44 @@ int PowerPrep_ConfigurePowerSource( void )
 #ifndef MXS_VBUS_CURRENT_DRAW
 	PowerPrep_CPUClock2PLL();
 #endif
+
+
+#elif defined(NO_VDD5V_SOURCE)
+	printf("\r\nConfigured for DCDC_BATT only power source.\r\n");
+
+#ifdef mx28
+	/* We only care about the DCDC_BATT source in this configuration */
+	BF_SET(POWER_BATTMONITOR,PWDN_BATTBRNOUT_5VDETECT_ENABLE);
+#endif
+
+	/* since the DCDC_BATT input is our only source, we'll assume
+	 * it is good and attempt to boot.  If your device has uses
+	 * this configuration but has a external DCDC_BATT source
+	 * that takes time to ramp, you could add a voltage check
+	 * and wait here until voltage reaches near the final level to
+	 * avoid trigger a battery brownout when the voltage is too
+	 * low.
+	 */
+	bBatteryReady = true;
+
+	/* bBatteryGood is not used for this configuration */
+	/* bBatteryGood = don't care */
+
+	/*Boot from DCDC_BATT source*/
+	iReturnValue = PowerPrep_BattBoot();
+	PowerPrep_CPUClock2PLL();
+
+	/* raise battery brownout level to programmed value. */
+	PowerPrep_InitBattBo();
+
+	/* Configured to not use a VDD5V source */
+	HW_POWER_5VCTRL_SET(BM_POWER_5VCTRL_ILIMIT_EQ_ZERO);
+
+
+
+
 #else
+
 	/* check if Battery Voltage is high enough for full
 	* power operation.
 	*/
@@ -404,13 +506,15 @@ int PowerPrep_ConfigurePowerSource( void )
 
 		}
 	}
-#endif
+
 	/* raise battery brownout level to programmed value. */
 	PowerPrep_InitBattBo();
+#endif /* #ifdef NO_DCDC_BATT_SOURCE */
 
 	/* Lastly, let's switch the Vddd power source to DCDC instead of
 	* the linear regulator(linear regulator is the hardware default
-	* configuration at bootup.
+	* configuration at bootup but is much less capable than the DCDC
+	* converter.  See datasheet for details.
 	*/
 	PowerPrep_SwitchVdddToDdcdcSource();
 
@@ -646,7 +750,12 @@ void PowerPrep_Init4p2Parameters( void )
 
 	HW_POWER_DCDC4P2.B.TRG = 0;
 	HW_POWER_5VCTRL.B.HEADROOM_ADJ = 0x4;
+#ifdef NO_DCDC_BATT_SOURCE
+/* don't use the DCDC_BATT source if configured not to */
+	HW_POWER_DCDC4P2.B.DROPOUT_CTRL = 0x8;  //100mV drop before stealing
+#else
 	HW_POWER_DCDC4P2.B.DROPOUT_CTRL = 0xA;  //100mV drop before stealing
+#endif
 		// charging current
 	HW_POWER_5VCTRL.B.CHARGE_4P2_ILIMIT = 0x3f;
 }
