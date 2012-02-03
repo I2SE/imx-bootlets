@@ -95,7 +95,7 @@ void PowerPrep_PrintBatteryVoltage(unsigned int value);
  * select which one to use.  This is only for hardware configurations this no
  * DCDC_BATT power source.
 */
-//#define NO_DCDC_BATT_SOURCE
+#define NO_DCDC_BATT_SOURCE
 
 /* Enable the following if you only have a DCDC_BATT source only and no V
  * This includes configurations with and without a supercap on the BATTERY pin as
@@ -357,6 +357,7 @@ void PowerPrep_ClearAutoRestart( void )
         /* Due to the hardware design bug of mx28 EVK-A
         * we need to set the AUTO_RESTART bit.
 	*/
+#if 0
 	if(HW_RTC_PERSISTENT0.B.AUTO_RESTART==0)
 	{
 		while(BF_RD( RTC_STAT, NEW_REGS));
@@ -366,6 +367,7 @@ void PowerPrep_ClearAutoRestart( void )
 		while(BF_RD( RTC_STAT, NEW_REGS));
 		while(BF_RD( RTC_STAT, STALE_REGS));
 	}
+#endif
 }
 ////////////////////////////////////////////////////////////////////////////////
 //! \brief
@@ -392,6 +394,12 @@ int PowerPrep_ConfigurePowerSource( void )
 
 	printf("\r\nConfigured for 5v only power source.\
 		Battery powered operation disabled.\r\n");
+
+
+	BF_WR(POWER_5VCTRL, CHARGE_4P2_ILIMIT, 0x3);
+	HW_POWER_5VCTRL_CLR(BM_POWER_5VCTRL_PWD_CHARGE_4P2);
+	hw_digctl_MicrosecondWait(500000);
+
 
 	/* Disable automatic battery voltage measurements which seem unnecessary
 	 * for this configuration.
