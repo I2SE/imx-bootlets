@@ -36,6 +36,7 @@
 #include "registers/regsuartdbg.h"
 #include "registers/regsclkctrl.h"
 #include "registers/regslradc.h"
+#include "registers/regsrtc.h"
 #include <stdarg.h>
 #include "debug.h"
 
@@ -126,12 +127,10 @@ void PowerPrep_PrintBatteryVoltage(unsigned int value);
  */
 #ifdef mx28
 /*
- * At the time of this writing, from version Rev. 1, 04/2011 of the i.MX28
- * datasheet, 3V is less than the minimum DCDC operating voltage for i.MX28
- * of 3.1V as listed in by the "Battery / DCDC Input Voltage" parameter so
- * we will set the BRWNOUT_LVL bitfield the 3.1V value.
+ * The minimum DCDC operating voltage for i.MX28 with loading is 3.3V.
+ * we will set the BRWNOUT_LVL bitfield the 3.2V value for 0.1V margin.
  */
-#define BATTERY_BRWNOUT_BITFIELD_VALUE 18 /* 18 = 3.12V */
+#define BATTERY_BRWNOUT_BITFIELD_VALUE 20 /* 20 = 3.2V */
 #else
 /*
  * At the time of this writing,
@@ -350,9 +349,9 @@ int _start( void )
 /* clear RTC ALARM wakeup or AUTORESTART bits here. */
 void PowerPrep_ClearAutoRestart( void )
 {
-	HW_RTC_CTRL_CLR( BM_ICOLL_CTRL_SFTRST );
+	HW_RTC_CTRL_CLR( BM_RTC_CTRL_SFTRST );
 	while( HW_RTC_CTRL.B.SFTRST == 1 );
-	HW_RTC_CTRL_CLR( BM_ICOLL_CTRL_CLKGATE );
+	HW_RTC_CTRL_CLR( BM_RTC_CTRL_CLKGATE );
 	while( HW_RTC_CTRL.B.CLKGATE == 1 );
         /* Due to the hardware design bug of mx28 EVK-A
         * we need to set the AUTO_RESTART bit.
@@ -388,6 +387,8 @@ int PowerPrep_ConfigurePowerSource( void )
 	 *  battery.  Battery powered operation and automatic voltage
 	 *  measurements are disabled.
 	*/
+    // bit 11 of PERSISTENT1
+    HW_RTC_PERSISTENT1_SET(0x800);
 
 	bBatteryReady = false;
 	bBatteryGood = false;
@@ -396,16 +397,14 @@ int PowerPrep_ConfigurePowerSource( void )
 		Battery powered operation disabled.\r\n");
 
 
-	BF_WR(POWER_5VCTRL, CHARGE_4P2_ILIMIT, 0x3);
-	HW_POWER_5VCTRL_CLR(BM_POWER_5VCTRL_PWD_CHARGE_4P2);
-	hw_digctl_MicrosecondWait(500000);
-
-
 	/* Disable automatic battery voltage measurements which seem unnecessary
 	 * for this configuration.
 	 */
+    BF_SET(POWER_BATTMONITOR,EN_BATADJ);
 	BF_CLR(LRADC_CONVERSION, AUTOMATIC);
-	BF_WR(POWER_BATTMONITOR, BATT_VAL,0);
+	BF_WR(POWER_BATTMONITOR, BATT_VAL,525);  //4200/8
+
+	HW_POWER_BATTMONITOR.B.BRWNOUT_LVL = BATTERY_BRWNOUT_BITFIELD_VALUE;
 
 	iReturnValue = PowerPrep_5vBoot();
 
@@ -422,6 +421,7 @@ int PowerPrep_ConfigurePowerSource( void )
 	BF_SET(POWER_BATTMONITOR,PWDN_BATTBRNOUT_5VDETECT_ENABLE);
 #endif
 
+    HW_RTC_PERSISTENT1_CLR(0x800);
 	/* since the DCDC_BATT input is our only source, we'll assume
 	 * it is good and attempt to boot.  If your device has uses
 	 * this configuration but has a external DCDC_BATT source
@@ -449,6 +449,8 @@ int PowerPrep_ConfigurePowerSource( void )
 
 
 #else
+
+    HW_RTC_PERSISTENT1_CLR(0x800);
 
 	/* check if Battery Voltage is high enough for full
 	* power operation.
@@ -678,20 +680,14 @@ void PowerPrep_Enable4p2( void )
 
 	uint32_t vdddctrl, vddactrl, vddioctrl;
 
-	/* Disabling of FETs is necessary for the following functionality to
-	* enable 4P2 safely when the glitch from mx23 chip errata 5837
-	* occurs.  When the glitch occurs and 4P2 rail is restarted,
-	* if the DCDC is active and sourced from 4P2, and if the battery is very low
-	* or dead, the re-enabling of the 4P2 source causes the DCDC's source
-	* to spike up quickly, potentially causing voltage spikes on the output
-	* rails which we want to avoid.  A similar but slightly different scenario
-	* caused chip damage in previous generations of parts.
-	*
-	* Also, we the only entrance to this function should be from a 5V connected
-	* bootup and the PWDN_5VBRNOUT functionaltiy should be enabled.  We
-	* are about to disable all the fets so if we were relying on battery powered
-	* DCDC operation and arrive at this point, the device will fail.
-	*/
+    /* Errata 5837:  Setting the ENABLE_DCDC bit in the HW_POWER_DCDC4P2 or
+       HW_POWER_5VCTRL registers can result in false brownout detection.
+
+       When the ENABLE_DCDC bit in HW_POWER_DCDC4P2 is set, a glitch is propagated through
+       the brownout comparators. If the glitch is sufficiently large, it can cause a false brownout detection.
+       The VDDD, VDDA, VDDIO, and VBUSVALID comparators are all susceptible to the glitch.
+       Below codes follow the workaround sequence of Errata 5837 to avoid the shutdown caused by false brownout.
+    */
 
 	vdddctrl = HW_POWER_VDDDCTRL_RD();
 	vddactrl = HW_POWER_VDDACTRL_RD();
@@ -702,11 +698,11 @@ void PowerPrep_Enable4p2( void )
 		BM_POWER_VDDDCTRL_PWDN_BRNOUT);
 
 	HW_POWER_VDDACTRL_SET(BM_POWER_VDDACTRL_DISABLE_FET |
-		BM_POWER_VDDDCTRL_ENABLE_LINREG |
-		BM_POWER_VDDDCTRL_PWDN_BRNOUT);
+		BM_POWER_VDDACTRL_ENABLE_LINREG |
+		BM_POWER_VDDACTRL_PWDN_BRNOUT);
 
 	HW_POWER_VDDIOCTRL_SET(BM_POWER_VDDIOCTRL_DISABLE_FET |
-		BM_POWER_VDDDCTRL_PWDN_BRNOUT);
+		BM_POWER_VDDIOCTRL_PWDN_BRNOUT);
 
 	PowerPrep_Init4p2Parameters();
 
@@ -771,6 +767,7 @@ void PowerPrep_Init4p2Parameters( void )
 
 void PowerPrep_Init4p2Regulator( void )
 {
+    int i;
 
 	// Enables but DCDC 4P2 logic.  This appears to be a necessary step not
 	// only for DCDC operation from 4p2, but for the 4p2 rail itself to
@@ -803,59 +800,27 @@ void PowerPrep_Init4p2Regulator( void )
 		* battery power is not present.  Exiting to not enable DCDC
 		* power during 5V connected state.
 		*/
-		hw_power_Enable4p2DcdcInput(false);
-		hw_power_EnableMaster4p2( false );
-
 		printf("Enabling of DCDC failed at setting of \
-			DCDC4P2 ENABLE_DCDC.  Only 5V power supply \
-			operating is the linear regulators.\n");
+			DCDC4P2 ENABLE_DCDC.  We need power down device.\n");
+
+		hw_digctl_MicrosecondWait(100);
+        hw_power_PowerDown();
+
 		return;
 	}
 
 
-
-	/* here we set the 4p2 brownout level to something very
-	* close to 4.2V.  We then check the brownout status.  If the brownout
-	* status is false, the voltage is already close to the target
-	* voltage of 4.2V so we can go ahead and set the 4P2 current
-	* limit to our max target limit.  If the brownout status is true,
-	* we need to ramp us the current limit so that we don't cause
-	* large inrush current issues.  We step up the current limit until
-	* the brownout status is false or until we've reached our maximum
-	* defined 4p2 current limit.
+	/* Ramp up the current limit to avoid large inrush current.  
 	*/
-	HW_POWER_DCDC4P2.B.BO = 22; // 4.15V
 
+    i = HW_POWER_5VCTRL.B.CHARGE_4P2_ILIMIT;
 
-	if(HW_POWER_STS.B.DCDC_4P2_BO == 0)
-	{
-		HW_POWER_5VCTRL.B.CHARGE_4P2_ILIMIT =
-			hw_power_ConvertCurrentToSetting(
-			BOOTUP_CHARGE_4P2_CURRENT_LIMIT);
-	}
-	else
-	{
-
-		int i = HW_POWER_5VCTRL.B.CHARGE_4P2_ILIMIT;
-
-		while(i < hw_power_ConvertCurrentToSetting(
+	while(i < hw_power_ConvertCurrentToSetting(
 				BOOTUP_CHARGE_4P2_CURRENT_LIMIT))
-
-		{
-			if(HW_POWER_STS.B.DCDC_4P2_BO == 0)
-			{
-				i = hw_power_ConvertCurrentToSetting(
-				BOOTUP_CHARGE_4P2_CURRENT_LIMIT);
-				hw_digctl_MicrosecondWait(100);
-				HW_POWER_5VCTRL.B.CHARGE_4P2_ILIMIT = i;
-			}
-			else
-			{
-				i++;
-				HW_POWER_5VCTRL.B.CHARGE_4P2_ILIMIT = i;
-				hw_digctl_MicrosecondWait(100);
-			}
-		}
+    {
+		i++;
+		HW_POWER_5VCTRL.B.CHARGE_4P2_ILIMIT = i;
+		hw_digctl_MicrosecondWait(100);
 	}
 
 
@@ -867,7 +832,8 @@ void PowerPrep_Init4p2Regulator( void )
 		hw_digctl_MicrosecondWait(10000);
 #endif
 
-	HW_POWER_DCDC4P2.B.BO = 0;
+    hw_digctl_MicrosecondWait(100000);
+
 	HW_POWER_CTRL_CLR(BM_POWER_CTRL_DCDC4P2_BO_IRQ);
 
 }
@@ -925,14 +891,6 @@ void PowerPrep_Enable4p2Fiq( void )
 
 void PowerPrep_InitDcdc4p2Source( void )
 {
-
-	if(HW_POWER_DCDC4P2.B.ENABLE_DCDC == false)
-	{
-		printf("Error: tried to enable 5VCTRL ENABLE_DCDC before\
-			enabling DCDC4P2 ENABLE_DCDC.\n");
-		return;
-	}
-
 	/* Enable Master 4p2 */
 	hw_power_EnableDcdc( true );
 
@@ -944,13 +902,13 @@ void PowerPrep_InitDcdc4p2Source( void )
 		 * battery power is not present.  Exiting to not enable DCDC
 		 * power during 5V connected state.
 		 */
-		hw_power_EnableDcdc( false );
-		hw_power_Enable4p2DcdcInput( false );
-		hw_power_EnableMaster4p2( false );
 
 		printf("Enabling of DCDC failed at setting of "\
-			"5VCTRL ENABLE_DCDC.  The only 5V power supply "\
-			"operating is the linear regulators.\r\n");
+			"5VCTRL ENABLE_DCDC.  We need power down device.\n");
+
+		hw_digctl_MicrosecondWait(100);
+
+        hw_power_PowerDown();
 		return;
 	}
 }

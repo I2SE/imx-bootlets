@@ -1254,11 +1254,14 @@ void entry_auto_clock_gate()
 }
 void change_cpu_freq()
 {
-	int value = 0;
+	int value = HW_POWER_VDDDCTRL_RD();
 
-	printf("power 0x%x\r\n" , HW_POWER_VDDDCTRL_RD());
+	printf("power 0x%x\r\n" , value);
+    value &= ~BM_POWER_VDDDCTRL_TRG;
 	value |= BF_POWER_VDDDCTRL_TRG(28);
+    value &= ~BM_POWER_VDDDCTRL_BO_OFFSET;
 	value |= BF_POWER_VDDDCTRL_BO_OFFSET(7);
+    value &= ~BM_POWER_VDDDCTRL_LINREG_OFFSET;
 	value |= BF_POWER_VDDDCTRL_LINREG_OFFSET(2);
 	//value |= BM_POWER_VDDDCTRL_ENABLE_LINREG;
 	//value |= BM_POWER_VDDDCTRL_DISABLE_STEPPING;
@@ -1297,8 +1300,15 @@ void change_cpu_freq()
 }
 void poweron_vdda()
 {
-	HW_POWER_VDDACTRL_WR( BF_POWER_VDDACTRL_TRG(0xC) | BF_POWER_VDDACTRL_BO_OFFSET(7)
-							| BF_POWER_VDDACTRL_LINREG_OFFSET(2) );
+ 	int value = HW_POWER_VDDACTRL_RD();   
+    value &= ~BM_POWER_VDDACTRL_TRG;
+    value |= BF_POWER_VDDACTRL_TRG(0xC);
+    value &= ~BM_POWER_VDDACTRL_BO_OFFSET;
+    value |= BF_POWER_VDDACTRL_BO_OFFSET(6);
+    value &= ~BM_POWER_VDDACTRL_LINREG_OFFSET;
+    value |= BF_POWER_VDDACTRL_LINREG_OFFSET(2);
+
+	HW_POWER_VDDACTRL_WR(value); 
 }
 int _start(int arg)
 {
