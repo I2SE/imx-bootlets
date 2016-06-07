@@ -1391,6 +1391,7 @@ int _start(int arg)
 	}
 #endif
 
+#if 0
 	/*Test Memory;*/
 	printf("start test memory accress\r\n");
 	printf("ddr2 0x%x\r\n", pTest);
@@ -1406,6 +1407,7 @@ int _start(int arg)
 		pTest++;
 	}
 	printf("finish simple test\r\n");
+#endif
 	return 0;
 }
 
