@@ -75,7 +75,7 @@ updater: linux_prep boot_prep power_prep
 linux_prep:
 ifneq "$(CMDLINE1)" ""
 	@echo "by using environment command line"
-	@echo -e "$(CMDLINE1)\n$(CMDLINE2)\n$(CMDLINE3)\n$(CMDLINE4)" \
+	@echo "$(CMDLINE1)\n$(CMDLINE2)\n$(CMDLINE3)\n$(CMDLINE4)" \
 		> linux_prep/cmdlines/$(BOARD).txt
 else
 	@echo "by using the pre-build command line"
