@@ -41,6 +41,7 @@
 
 //#define EMI_96M
  /* Debug uart have been init by boot rom. */
+#ifdef DEBUG
 void putc(char ch)
 {
 	int loop = 0;
@@ -53,6 +54,8 @@ void putc(char ch)
 	/* if(!(HW_UARTDBGFR_RD() &BM_UARTDBGFR_TXFF)) */
 	HW_UARTDBGDR_WR(ch);
 }
+#endif
+
 void delay(unsigned int us)
 {
 	unsigned int start , cur;
