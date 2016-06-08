@@ -102,6 +102,14 @@ static enum magic_key get_magic_key (void)
 	keys = get_pressed_keys();
 
 	/*
+	 * Return immediatly if no key is pressed; otherwise MAGIC_KEY1
+	 * would be 'detected' accidentally when magic_keys is empty,
+	 * i.e. no key combination is defined at all.
+	 */
+	if (!keys)
+		return NO_MAGIC_KEY;
+
+	/*
 	 * Check if detected keys combination corresponds to
 	 * any magic key code
 	 */
