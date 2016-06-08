@@ -41,9 +41,9 @@ else
 	elftosb -z -c ./linux.bd -o i$(ARCH)_linux.sb
 	elftosb -z -f imx28 -c  ./linux_ivt.bd -o i$(ARCH)_ivt_linux.sb
 
-	@echo "generating U-Boot boot stream image"
-	elftosb -z -c ./uboot.bd -o i$(ARCH)_uboot.sb
-	elftosb -z -f imx28 -c ./uboot_ivt.bd -o i$(ARCH)_ivt_uboot.sb
+	#@echo "generating U-Boot boot stream image"
+	#elftosb -z -c ./uboot.bd -o i$(ARCH)_uboot.sb
+	#elftosb -z -f imx28 -c ./uboot_ivt.bd -o i$(ARCH)_ivt_uboot.sb
 endif
 	#@echo "generating kernel bootstream file sd_mmc_bootstream.raw"
 	#Please use cfimager to burn xxx_linux.sb. The below way will no
