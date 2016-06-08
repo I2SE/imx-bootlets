@@ -20,7 +20,18 @@
 
 #ifndef _DEBUG_H_
 #define _DEBUG_H_
+
+#ifdef DEBUG
+
 void putc(char ch);
 void printhex(int data);
 void printf(char *fmt, ...);
+
+#else
+
+#define putc(...) do {} while (0)
+#define printf(...) do {} while (0)
+
+#endif
+
 #endif

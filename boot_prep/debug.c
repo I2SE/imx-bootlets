@@ -19,6 +19,8 @@
  */
 
 #include <stdarg.h>
+
+#ifdef DEBUG
 void printhex(int data)
 {
 	int i = 0;
@@ -61,3 +63,4 @@ void printf(char *fmt, ...)
 	}
 	va_end(args);
 }
+#endif

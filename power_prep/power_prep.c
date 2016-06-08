@@ -1204,6 +1204,7 @@ bool PowerPrep_IsBatteryReady( void )
 		return false;
 }
 
+#ifdef DEBUG
 void putc(char ch)
 {
 	int loop = 0;
@@ -1216,6 +1217,7 @@ void putc(char ch)
 	/* if(!(HW_UARTDBGFR_RD() &BM_UARTDBGFR_TXFF)) */
 	HW_UARTDBGDR_WR(ch);
 }
+#endif
 
 void PowerPrep_PrintBatteryVoltage(unsigned int value)
 {
