@@ -45,6 +45,9 @@ BOARD_OBJS = $(BOARD).o
 # is to receive magic keys from them.
 #
 # Note that the source files are located under hw/ directory.
+# If none HW module is used you must included the dummy driver,
+# otherwise your board will not start.
+DUMMY_OBJS = dummy.o
 LRADC_OBJS = lradc-buttons.o
 
 # Text file with command lines
