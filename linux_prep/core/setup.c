@@ -360,7 +360,6 @@ u32 setup_tags (void)
 
 	setup_start_tag();
 	setup_mem_tag();
-	setup_initrd_tag();
 	setup_cmdline_tag(cmdlines[magic_key]);
 	setup_end_tag();
 
