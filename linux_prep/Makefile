@@ -77,6 +77,11 @@ ARCH = mx28
 HW_OBJS = $(DUMMY_OBJS)
 CFLAGS += -DMX28 -DBOARD_DUCKBILL
 endif
+ifeq ($(BOARD), duckbill_updater)
+ARCH = mx28
+HW_OBJS = $(DUMMY_OBJS)
+CFLAGS += -DMX28 -DBOARD_DUCKBILL
+endif
 
 # Generic code
 CORE_OBJS = entry.o resume.o cmdlines.o setup.o keys.o

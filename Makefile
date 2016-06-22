@@ -19,6 +19,9 @@ endif
 ifeq ($(BOARD), duckbill)
 ARCH = mx28
 endif
+ifeq ($(BOARD), duckbill_updater)
+ARCH = mx28
+endif
 
 all: build_prep gen_bootstream
 
