@@ -1,1 +1,1 @@
-console=ttyAMA0,115200 lpj=1130496 rdinit=/linuxrc rw panic=1 g_mass_storage.removable=1 g_mass_storage.luns=1 g_mass_storage.stall=0 g_mass_storage.idVendor=1647 g_mass_storage.idProduct=14335
+console=ttyAMA0,115200 lpj=1130496 rdinit=/linuxrc rw panic=1 g_mass_storage.removable=1 g_mass_storage.luns=1 g_mass_storage.stall=0 g_mass_storage.idVendor=1647 g_mass_storage.idProduct=14335 usbcore.autosuspend=-1
