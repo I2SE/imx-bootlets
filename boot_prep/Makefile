@@ -20,7 +20,7 @@ OBJDUMP	= $(CROSS_COMPILE)objdump
 
 MEM_TYPE ?= MEM_DDR1
 
-CFLAGS 	= -g -Wall -I$(INCLUDEDIR) -I$(INCLUDEDIR)/mach -I./ -O -D$(MEM_TYPE)
+CFLAGS 	= -g -Wall -I$(INCLUDEDIR) -I$(INCLUDEDIR)/mach -I./ -O -fno-stack-protector -D$(MEM_TYPE)
 LDFLAGS = -static -nostdlib -T $(BOOT_LAYOUT)
 
 # Generic code

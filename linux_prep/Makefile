@@ -31,7 +31,7 @@ OBJCOPY	= $(CROSS_COMPILE)objcopy
 OBJDUMP	= $(CROSS_COMPILE)objdump
 
 LIBGCCDIR = $(dir $(shell $(CC) -print-libgcc-file-name))
-CFLAGS 	= -Wall -I$(INCLUDEDIR) -nostdinc -fno-builtin -O
+CFLAGS 	= -Wall -I$(INCLUDEDIR) -nostdinc -fno-builtin -fno-stack-protector -O
 LDFLAGS = -static -nostdlib -T $(BOOT_LAYOUT_OUT) -L$(LIBGCCDIR) -lgcc
 
 BOARD ?= stmp378x_dev
